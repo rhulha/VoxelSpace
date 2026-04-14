@@ -61,6 +61,10 @@ const $ = (id) => document.getElementById(id);
 let updaterunning = false;
 let time = performance.now();
 
+let velX = 0;
+let velY = 0;
+let horizonBase = 100; // modified by Q/E; pitch effect is added on top
+
 // for fps display
 let timelastframe = performance.now();
 let frames = 0;
@@ -69,34 +73,55 @@ let frames = 0;
 function UpdateCamera()
 {
     const current = performance.now();
+    const dt = (current - time) * 0.03;
 
     input.keypressed = false;
+
     if (input.leftright != 0)
     {
-        camera.angle += input.leftright*0.1*(current-time)*0.03;
+        camera.angle += input.leftright * 0.1 * dt;
         input.keypressed = true;
     }
+
+    // Forward/back accelerates velocity instead of moving directly (helicopter inertia)
     if (input.forwardbackward != 0)
     {
-        camera.x -= input.forwardbackward * Math.sin(camera.angle) * (current-time)*0.03;
-        camera.y -= input.forwardbackward * Math.cos(camera.angle) * (current-time)*0.03;
+        velX -= input.forwardbackward * Math.sin(camera.angle) * 0.3 * dt;
+        velY -= input.forwardbackward * Math.cos(camera.angle) * 0.3 * dt;
         input.keypressed = true;
     }
+
     if (input.updown != 0)
     {
-        camera.height += input.updown * (current-time)*0.03;
+        camera.height += input.updown * dt;
         input.keypressed = true;
     }
     if (input.lookup)
     {
-        camera.horizon += 2 * (current-time)*0.03;
+        horizonBase += 2 * dt;
         input.keypressed = true;
     }
     if (input.lookdown)
     {
-        camera.horizon -= 2 * (current-time)*0.03;
+        horizonBase -= 2 * dt;
         input.keypressed = true;
     }
+
+    // Apply velocity
+    camera.x += velX;
+    camera.y += velY;
+
+    // Helicopter drag: gradually bleed off speed
+    velX *= Math.pow(0.92, dt);
+    velY *= Math.pow(0.92, dt);
+
+    // Pitch visual: horizon rises when flying forward, drops when flying backward
+    const forwardVel = -velX * Math.sin(camera.angle) - velY * Math.cos(camera.angle);
+    camera.horizon = horizonBase + forwardVel * 3;
+
+    // Keep the render loop alive while still coasting
+    if (Math.abs(velX) > 0.1 || Math.abs(velY) > 0.1)
+        input.keypressed = true;
 
     // Collision detection. Don't fly below the surface.
     const mapoffset = ((Math.floor(camera.y) & (map.width-1)) << map.shift) + (Math.floor(camera.x) & (map.height-1))|0;
